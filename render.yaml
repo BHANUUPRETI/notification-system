@@ -1,0 +1,112 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Django API on Render
+  #   render blueprint launch  ->  picks up this file
+  #   or: New > Blueprint > point at this repo
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: notification-api
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: |
+      pip install -r requirements.txt
+      python manage.py migrate --noinput
+      python manage.py seed_triggers
+      python manage.py collectstatic --no-input
+    # `rootDir: backend` already makes this the working directory, so the module
+    # path is relative to it. Adding `--chdir backend` here would look for
+    # backend/backend/config/wsgi.py and the container would never boot.
+    startCommand: gunicorn config.wsgi:application --log-file - --access-logfile - --workers 2 --threads 4 --timeout 120
+    healthCheckPath: /api/health/
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.10"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: "*.onrender.com,localhost,127.0.0.1"
+      # Set this to your Vercel URL, comma separated.
+      - key: CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      # --- database: leave the free Postgres attached below, or use a local
+      #     sqlite by removing this block. Render's free Postgres expires after
+      #     30 days, which is fine for a 2-day assignment.
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: notification-db
+          property: database
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: notification-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: notification-db
+          property: password
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: notification-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: notification-db
+          property: port
+      # --- notification providers
+      - key: NOTIFICATION_SANDBOX
+        value: "True"
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_BUSINESS_ACCOUNT_ID
+        sync: false
+      - key: WHATSAPP_API_VERSION
+        value: "v21.0"
+      - key: EMAIL_PROVIDER
+        value: postmark
+      - key: POSTMARKAPP_TOKEN
+        sync: false
+      - key: POSTMARK_FROM_EMAIL
+        sync: false
+      - key: ONESIGNAL_APP_ID
+        sync: false
+      - key: ONESIGNAL_REST_API_KEY
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_CLAIM_EMAIL
+        sync: false
+      - key: SCAN_TOKEN
+        generateValue: true
+
+  # ---------------------------------------------------------------------------
+  # The build command above runs migrations and seeds the base triggers.
+  # If you want optional demo templates/users after deployment, run them once
+  # from a Render shell:
+  #   python manage.py seed_triggers --with-templates
+  #   python manage.py create_demo_users --admin
+  # ---------------------------------------------------------------------------
+
+  - type: db
+    name: notification-db
+    plan: free
+    databaseName: notifications
+    user: notify
+
+  # ---------------------------------------------------------------------------
+  # Daily inactivity scan. Free plans do not run cron jobs, so call this from
+  # any external scheduler (cron-job.org, GitHub Actions) or run it by hand:
+  #   curl -X POST "$RENDER_URL/api/internal/scan-inactive/"  (see README)
+  # ---------------------------------------------------------------------------
+  # - type: cron
+  #   name: inactivity-scan
+  #   schedule: daily
+  #   command: python manage.py scan_inactive
