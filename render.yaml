@@ -13,6 +13,7 @@ services:
       pip install -r requirements.txt
       python manage.py migrate --noinput
       python manage.py seed_triggers
+      python manage.py create_demo_users --admin
       python manage.py collectstatic --noinput
 
     startCommand: gunicorn config.wsgi:application --log-file - --access-logfile - --workers 2 --threads 4 --timeout 120
