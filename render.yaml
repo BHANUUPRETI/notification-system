@@ -33,7 +33,7 @@ services:
         value: "False"
 
       - key: DJANGO_ALLOWED_HOSTS
-        value: "*.onrender.com,localhost,127.0.0.1"
+        value: "notification-api-dft7.onrender.com,localhost,127.0.0.1"
 
       # After Vercel deployment, set these to your real Vercel HTTPS URL.
       # Example:
