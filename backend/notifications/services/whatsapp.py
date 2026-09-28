@@ -108,6 +108,7 @@ class WhatsAppProvider(BaseProvider):
         to: str = "",
         template_name: str = "",
         language: str = "",
+        template_parameters: list[str] | None = None,
         **extra,
     ) -> ProviderResult:
         to = to or _phone_of(user)
@@ -127,7 +128,7 @@ class WhatsAppProvider(BaseProvider):
                 to,
                 template_name,
                 language or self.config.get("TEMPLATE_LANGUAGE", "en_US"),
-                _template_parameters(body),
+                list(template_parameters or []),
             )
         else:
             payload = {
@@ -166,6 +167,3 @@ def _template_payload(to: str, name: str, language: str, parameters: list[str]) 
         ]
     return payload
 
-
-def _template_parameters(body: str) -> list[str]:
-    return [line.strip() for line in (body or "").splitlines() if line.strip()]

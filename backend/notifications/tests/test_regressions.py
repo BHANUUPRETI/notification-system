@@ -9,7 +9,7 @@ from django.test import TestCase
 
 from notifications.constants import Channel, SendStatus
 from notifications.models import PushSubscription, Template, Trigger
-from notifications.services.dispatcher import fire_trigger
+from notifications.services.dispatcher import _whatsapp_template_parameters, fire_trigger
 from notifications.services.email import _from_header, _reply_to
 from notifications.services.registry import get_provider
 
@@ -52,6 +52,32 @@ class FromHeaderTests(TestCase):
         self.assertEqual(_reply_to(self.CONFIG), "noreply@example.com")
         self.assertIsNone(_reply_to({}))
         self.assertIsNone(_reply_to({"DEFAULT_REPLY_TO": "   "}))
+
+
+class WhatsAppTemplateParameterTests(TestCase):
+    """Named local placeholders must become Meta positional parameters."""
+
+    def test_two_body_variables_become_two_meta_parameters(self):
+        body = (
+            "Hello {{ first_name }}, there was recent activity on your "
+            "{{ site_name }} account."
+        )
+        values = _whatsapp_template_parameters(
+            body, {"first_name": "Amit", "site_name": "Notify Demo"}
+        )
+        self.assertEqual(values, ["Amit", "Notify Demo"])
+
+    def test_parameter_order_follows_body_not_alphabetical_order(self):
+        body = "{{ site_name }} / {{ first_name }}"
+        values = _whatsapp_template_parameters(
+            body, {"first_name": "Amit", "site_name": "Notify Demo"}
+        )
+        self.assertEqual(values, ["Notify Demo", "Amit"])
+
+    def test_repeated_named_placeholder_is_sent_once(self):
+        body = "Hi {{ first_name }}, again {{ first_name }}"
+        values = _whatsapp_template_parameters(body, {"first_name": "Amit"})
+        self.assertEqual(values, ["Amit"])
 
 
 class PushIsolationTests(TestCase):

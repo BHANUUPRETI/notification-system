@@ -34,7 +34,7 @@ from ..constants import CHANNEL_ORDER, Channel, ProviderStatus, SendStatus
 
 from ..models import NotificationLog, PushSubscription, Template, Trigger
 
-from ..renderer import TemplateRenderError, render
+from ..renderer import PLACEHOLDER_RE, TemplateRenderError, render
 
 from .base import ProviderResult, mask_email, mask_endpoint, mask_phone
 
@@ -587,6 +587,16 @@ def _deliver_channel(
 
             allow_any=is_test,
 
+            template_parameters=(
+
+                _whatsapp_template_parameters(template.body, mapped_context)
+
+                if channel == Channel.WHATSAPP
+
+                else None
+
+            ),
+
         )
 
 
@@ -631,6 +641,31 @@ def _deliver_channel(
 
 
 
+
+def _whatsapp_template_parameters(body_template: str, context: dict[str, Any]) -> list[str]:
+
+    """Return Meta body parameters in the order placeholders appear locally.
+
+    A Meta template uses positional placeholders ({{1}}, {{2}}, ...), while the
+    local admin copy uses named placeholders.  The position in the local body
+    is therefore the position sent to Meta.  Repeated named placeholders are
+    included only once because they refer to the same Meta parameter.
+    """
+
+    values: list[str] = []
+    seen: set[str] = set()
+
+    for match in PLACEHOLDER_RE.finditer(body_template or ""):
+        name = match.group(1).split(".")[-1]
+        if name in seen:
+            continue
+        seen.add(name)
+        value = context.get(name, "")
+        values.append("" if value is None else str(value))
+
+    return values
+
+
 def _call_provider(
 
     provider,
@@ -653,6 +688,8 @@ def _call_provider(
 
     allow_any: bool = False,
 
+    template_parameters: list[str] | None = None,
+
 ) -> ProviderResult:
 
     if channel == Channel.WHATSAPP:
@@ -672,6 +709,8 @@ def _call_provider(
             template_name=(template.provider_template_name or "").strip(),
 
             language=template.provider_language or "",
+
+            template_parameters=template_parameters or [],
 
         )
 
