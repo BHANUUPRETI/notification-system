@@ -12,6 +12,7 @@ import {
   isOneSignalLoaded,
   logoutOneSignal,
   oneSignalEndpoint,
+  restoreOneSignalSubscription,
   subscribeOneSignal,
 } from "@/lib/onesignal";
 import { Spinner, Toggle } from "@/components/ui";
@@ -46,8 +47,48 @@ export default function DashboardPage() {
       // user would be told their notifications are off.
       const backend = config.push?.backend ?? (config.vapid_public_key ? "vapid" : "none");
       if (backend === "onesignal") {
-        const playerId = await getOneSignalPlayerId();
-        if (!cancelled) setPushState(playerId ? "subscribed" : permissionState());
+        const appId = config.push?.onesignal_app_id;
+        if (!appId) {
+          if (!cancelled) setPushState("default");
+          return;
+        }
+
+        // If this browser has already granted permission, restore the existing
+        // OneSignal subscription automatically. Do not prompt on page load.
+        // Re-registering it also rebinds the endpoint to the current app user
+        // after logout/login or an account switch.
+        const permission = permissionState();
+        if (permission !== "granted") {
+          if (!cancelled) setPushState(permission);
+          return;
+        }
+
+        try {
+          const { playerId, optedIn } = await restoreOneSignalSubscription(
+            appId,
+            String(user.id),
+          );
+          if (cancelled) return;
+
+          if (!optedIn || !playerId) {
+            setPushState("default");
+            return;
+          }
+
+          await api("/api/push/subscribe/", {
+            method: "POST",
+            body: {
+              provider: "onesignal",
+              endpoint: oneSignalEndpoint(playerId),
+              onesignal_subscription_id: playerId,
+              p256dh: "",
+              auth: "",
+            },
+          });
+          if (!cancelled) setPushState("subscribed");
+        } catch {
+          if (!cancelled) setPushState(permissionState());
+        }
         return;
       }
       const sub = await getSubscription();

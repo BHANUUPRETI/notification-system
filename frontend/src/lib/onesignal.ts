@@ -48,6 +48,8 @@ declare global {
 type OneSignalQueue = Array<(sdk: OneSignalLike) => void>;
 
 let sdkPromise: Promise<OneSignalLike> | null = null;
+let initializedAppId: string | null = null;
+let currentExternalId: string | null = null;
 
 /** True when the SDK has already been injected into the page. */
 export function isOneSignalLoaded(): boolean {
@@ -127,15 +129,26 @@ function initOptions(appId: string): Record<string, unknown> {
 /** Initialise the SDK for *appId* and tag it with the signed-in user id. */
 export async function initOneSignal(appId: string, externalId?: string): Promise<OneSignalLike> {
   const sdk = await loadOneSignal();
-  if (sdk.init) await sdk.init(initOptions(appId));
 
-  if (externalId) {
-    // Lets the backend target this exact user through OneSignal's REST API.
+  // OneSignal.init() is a page-lifetime operation. Re-running it every time the
+  // authenticated user changes can leave the SDK in an inconsistent state.
+  if (initializedAppId !== appId) {
+    if (sdk.init) await sdk.init(initOptions(appId));
+    initializedAppId = appId;
+    currentExternalId = null;
+  }
+
+  if (externalId && currentExternalId !== externalId) {
+    // Re-associate the existing browser subscription with the currently signed-in
+    // app user. This must happen on every account switch/login; it does NOT ask
+    // the browser for notification permission again.
     try {
-      if (sdk.User?.AddAlias) sdk.User.AddAlias("external_id", externalId);
       if (sdk.login) await sdk.login(externalId);
+      if (sdk.User?.AddAlias) sdk.User.AddAlias("external_id", externalId);
+      currentExternalId = externalId;
     } catch {
-      // Aliasing is a convenience; a failure must not block subscribing.
+      // Aliasing/login is retried on the next dashboard visit. A failure here
+      // must not crash the rest of the account page.
     }
   }
   return sdk;
@@ -194,6 +207,32 @@ export async function subscribeOneSignal(
 }
 
 /**
+ * Restore an existing OneSignal browser subscription after a normal page load
+ * or app login. Unlike subscribeOneSignal(), this helper NEVER requests browser
+ * permission. It only initializes OneSignal, logs in the current app user and
+ * reads the subscription that the browser already owns.
+ */
+export async function restoreOneSignalSubscription(
+  appId: string,
+  externalId: string,
+): Promise<OneSignalResult> {
+  const sdk = await initOneSignal(appId, externalId);
+  const browserGranted =
+    sdk.Notifications?.permission === true ||
+    (typeof Notification !== "undefined" && Notification.permission === "granted");
+
+  if (!browserGranted) return { playerId: "", optedIn: false };
+
+  let playerId = await readSubscriptionId(sdk);
+  for (let attempt = 0; attempt < 20 && !playerId; attempt += 1) {
+    await new Promise((r) => setTimeout(r, 250));
+    playerId = await readSubscriptionId(sdk);
+  }
+
+  return { playerId: playerId ?? "", optedIn: Boolean(playerId) };
+}
+
+/**
  * Current subscription id, or null when the browser is not subscribed.
  * Loads the SDK if it has not been injected yet, so this is the correct check
  * when OneSignal is the active transport.
@@ -209,8 +248,10 @@ export async function logoutOneSignal(): Promise<void> {
   const sdk = await loadOneSignal();
   try {
     await sdk.logout?.();
+    currentExternalId = null;
   } catch {
     // Already logged out.
+    currentExternalId = null;
   }
 }
 /**
