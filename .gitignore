@@ -40,3 +40,5 @@ Thumbs.db
 # Backup files
 *_bkp
 *.bak
+# Local project state / exports
+*.zip

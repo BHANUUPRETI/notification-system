@@ -11,11 +11,16 @@ from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 import os
+import sys
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load .env from the backend/ folder if it exists.
 load_dotenv(BASE_DIR / ".env")
+
+# Automated tests must never call real notification providers, even if a local
+# .env has NOTIFICATION_SANDBOX=False.
+IS_TESTING = "test" in sys.argv
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +256,7 @@ NOTIFICATIONS = {
     # When True nothing is sent over the network. Messages are rendered, stored
     # as NotificationLog rows with status=simulated, and printed to the console.
     # Flip to False once the sandbox keys below are filled in.
-    "SANDBOX": env_bool("NOTIFICATION_SANDBOX", True),
+    "SANDBOX": True if IS_TESTING else env_bool("NOTIFICATION_SANDBOX", True),
     "DEFAULT_FROM_NAME": env_str("DEFAULT_FROM_NAME", "Notify Demo"),
     "DEFAULT_REPLY_TO": env_str("DEFAULT_REPLY_TO", "noreply@example.com"),
     "FRONTEND_URL": env_str("FRONTEND_URL", "http://localhost:3000"),
@@ -262,14 +267,14 @@ NOTIFICATIONS = {
     "SCAN_TOKEN": env_str("SCAN_TOKEN"),
     "WHATSAPP": {
         "ACCESS_TOKEN": env_str("WHATSAPP_ACCESS_TOKEN"),
-        "PHONE_NUMBER_ID": env_str("PHONE_NUMBER_ID"),
+        "PHONE_NUMBER_ID": env_str("WHATSAPP_PHONE_NUMBER_ID") or env_str("PHONE_NUMBER_ID"),
         "BUSINESS_ACCOUNT_ID": env_str("WHATSAPP_BUSINESS_ACCOUNT_ID"),
-        "API_VERSION": env_str("WHATSAPP_API_VERSION", "v21.0"),
+        "API_VERSION": env_str("WHATSAPP_API_VERSION", "v25.0"),
         "TEMPLATE_LANGUAGE": env_str("WHATSAPP_TEMPLATE_LANGUAGE", "en_US"),
         "TEST_RECIPIENTS": env_list("WHATSAPP_TEST_RECIPIENTS"),
     },
     "EMAIL": {
-        "PROVIDER": env_str("EMAIL_PROVIDER", "postmark").lower(),
+        "PROVIDER": env_str("EMAIL_PROVIDER", "brevo").lower(),
         "POSTMARK_TOKEN": env_str("POSTMARKAPP_TOKEN"),
         "POSTMARK_FROM_EMAIL": env_str("POSTMARK_FROM_EMAIL"),
         "BREVO_API_KEY": env_str("BREVO_API_KEY"),

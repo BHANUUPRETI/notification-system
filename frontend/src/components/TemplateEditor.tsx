@@ -577,9 +577,9 @@ export function TemplateEditor({
           <div className="field">
             <label>Preview (sample data)</label>
             <div className="preview-box">
-              {showTitle && preview.title ? <strong>{preview.title}</strong> : null}
-              {showSubject && preview.subject ? <strong>{preview.subject}</strong> : null}
-              {preview.body || <span className="faint">(empty)</span>}
+              {showTitle && preview.title ? <div className="preview-heading"><strong>{preview.title}</strong></div> : null}
+              {showSubject && preview.subject ? <div className="preview-heading"><strong>{preview.subject}</strong></div> : null}
+              <div>{preview.body || <span className="faint">(empty)</span>}</div>
             </div>
           </div>
 

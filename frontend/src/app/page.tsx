@@ -24,7 +24,7 @@ export default function HomePage() {
           <h1>One screen for every notification</h1>
           <p className="sub">
             Triggers, templates and on/off switches live in a single admin table. No
-            more opening the WhatsApp or Postmark dashboards.
+            more opening the Meta, Brevo or OneSignal dashboards.
           </p>
         </div>
         <div className="spacer" />
@@ -67,8 +67,8 @@ export default function HomePage() {
               </div>
               <p className="small dim mt-1">
                 {channel === "whatsapp" && "WhatsApp Cloud API sandbox message to the user's phone."}
-                {channel === "email" && "Transactional email via Postmark (or another free provider)."}
-                {channel === "webpush" && "Browser pop-up delivered with VAPID or OneSignal."}
+                {channel === "email" && "Transactional email via Brevo."}
+                {channel === "webpush" && "Browser pop-up delivered with OneSignal."}
               </p>
               {provider && !provider.configured ? (
                 <p className="small faint mt-1">{provider.message}</p>

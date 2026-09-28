@@ -2,7 +2,7 @@
 
 Admin-managed notifications over **WhatsApp**, **Email** and **Web Push**.
 Triggers, templates and on/off switches all live in **one table** in the admin
-panel — no opening the Meta, Postmark or OneSignal dashboards.
+panel — no opening the Meta, Brevo or OneSignal dashboards.
 
 | Part | Stack | Host |
 |---|---|---|
@@ -17,7 +17,6 @@ New folder/
 │   │   ├── services/   provider layer + dispatcher
 │   │   └── management/commands/  seed, scan, purge, vapid
 │   ├── scripts/        e2e_smoke.py
-│   └── render.yaml     Render blueprint
 └── frontend/           Next.js site + admin panel
     ├── src/app/        routes (/, /login, /dashboard, /admin/*)
     ├── src/components/ TopBar, TemplateEditor, Toast, ui
@@ -26,6 +25,10 @@ New folder/
 ```
 
 ---
+
+## Test safety
+
+Automated Django tests always force notification sandbox mode, regardless of the local `.env`. This prevents `python manage.py test` from making real WhatsApp, Brevo, or OneSignal network calls when local development is configured with `NOTIFICATION_SANDBOX=False`.
 
 ## Quick start
 
@@ -83,7 +86,7 @@ Anything that should cause a message. Seeded: `login`, `logout`,
   `config.days` and each user's `last_seen_at`.
 
 ### Channel
-WhatsApp (Cloud API) · Email (Postmark or another free provider) · Web Push
+WhatsApp (Cloud API) · Email (Brevo, with provider abstraction) · Web Push
 (browser only, no mobile app push). A trigger can use one, two or all three.
 
 ### Template
@@ -181,14 +184,14 @@ Run `python manage.py provider_status` at any time to see what is missing.
 
 ```ini
 WHATSAPP_ACCESS_TOKEN=your_test_token
-PHONE_NUMBER_ID=your_test_phone_number_id
+WHATSAPP_PHONE_NUMBER_ID=your_test_phone_number_id
 WHATSAPP_BUSINESS_ACCOUNT_ID=your_waba_id
-WHATSAPP_API_VERSION=v21.0
+WHATSAPP_API_VERSION=v25.0
 ```
 
 Tokens expire often — mint a new one from Meta when a send fails.
 
-### Email — Postmark or a free alternative
+### Email — Brevo (current deployment) or another supported provider
 `EMAIL_PROVIDER` selects the backend. All of them need a token **and** a
 verified sender.
 
@@ -200,15 +203,7 @@ verified sender.
 | Mailgun | `mailgun` | 100–300/day | built-in email validation |
 | Amazon SES | `ses` | 62,000/month (12 mo, from EC2) | cheapest at scale, more setup |
 
-Postmark example:
-
-```ini
-EMAIL_PROVIDER=postmark
-POSTMARKAPP_TOKEN=your_server_token
-POSTMARK_FROM_EMAIL=you@yourdomain.com
-```
-
-Brevo instead:
+Brevo (used by the deployed demo):
 
 ```ini
 EMAIL_PROVIDER=brevo
@@ -231,8 +226,8 @@ tells the browser which one is active, via `GET /api/config/` →
 | `none` | neither configured | the UI says exactly which variables are missing |
 
 If both are configured, OneSignal wins, because it is the option the spec names.
-A OneSignal-only deployment never downloads the OneSignal SDK, and a VAPID-only
-deployment never loads it either — the SDK is injected lazily.
+A OneSignal deployment loads the OneSignal SDK lazily only when it is the active
+transport; a VAPID-only deployment never loads the OneSignal SDK.
 
 **OneSignal**
 
@@ -284,8 +279,8 @@ POSTs the subscription to `/api/push/subscribe/`.
 | `CORS_ORIGINS` | `http://localhost:3000` | also used for `CSRF_TRUSTED_ORIGINS` |
 | `POSTGRES_*` | empty | when `POSTGRES_DB` is set, Postgres is used; otherwise sqlite |
 | `NOTIFICATION_SANDBOX` | `True` | `False` to really send |
-| `WHATSAPP_ACCESS_TOKEN`, `PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID` | — | WhatsApp Cloud API send + template status sync |
-| `EMAIL_PROVIDER` | `postmark` | `postmark`/`brevo`/`resend`/`mailgun`/`ses`/`console` |
+| `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID` | — | WhatsApp Cloud API send + template status sync |
+| `EMAIL_PROVIDER` | `brevo` | `brevo`/`postmark`/`resend`/`mailgun`/`ses`/`console` |
 | `POSTMARKAPP_TOKEN`, `POSTMARK_FROM_EMAIL` | — | Postmark |
 | `BREVO_API_KEY`, `BREVO_FROM_EMAIL` | — | Brevo |
 | `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | — | Resend |
@@ -411,6 +406,17 @@ production.
 
 ---
 
+## Current deployed demo (verified 28 Sep 2026)
+
+- Frontend: <https://notification-system-opal-nine.vercel.app>
+- Backend: <https://notification-api-dft7.onrender.com>
+- Health: <https://notification-api-dft7.onrender.com/api/health/>
+- Email: Brevo test sends and automatic Login/Logout delivery verified.
+- Web Push: OneSignal subscription plus Login/Logout delivery verified on the Vercel domain.
+- WhatsApp: Cloud API credentials are configured; `welcome_back_v1` and
+  `signed_out_v1` are waiting for Meta template approval before final real sends.
+
+
 ## Deploy
 
 ### Backend → Render
@@ -419,12 +425,11 @@ production.
    `render.yaml` is included so Render discovers the Blueprint directly.
 3. Fill the `sync: false` values in the Render dashboard:
    `CORS_ORIGINS`, `FRONTEND_URL`, and the provider keys you obtained.
-4. The Blueprint build runs migrations and seeds trigger rows automatically.
-   To create optional demo users, run once from a Render shell:
-
-```bash
-python manage.py create_demo_users --admin
-```
+4. The Blueprint build runs migrations, seeds trigger rows and collects static files automatically.
+   Render Free does not provide Shell access. For an assignment-only demo account,
+   temporarily add `python manage.py create_demo_users --admin` to the Blueprint
+   build command, deploy once, then remove that line and redeploy. Do not leave a
+   fixed demo credential bootstrap in the permanent production build.
 
 The daily inactivity scan is a cron job. Free plans cannot run cron, so either
 uncomment the `type: cron` block in `render.yaml` on a paid plan, or hit it from
@@ -439,7 +444,7 @@ curl -X POST https://<your-api>.onrender.com/api/internal/scan-inactive/ \
 1. Vercel → **New Project** → select the repo, set **Root Directory** to
    `frontend`.
 2. Framework preset: **Next.js** (auto-detected). No build overrides needed.
-3. Environment variable: `NEXT_PUBLIC_API_URL=https://<your-api>.onrender.com`.
+3. Environment variables: `NEXT_PUBLIC_API_URL=https://<your-api>.onrender.com` and optional `API_URL_INTERNAL` with the same backend URL.
 4. Deploy, then add that Vercel URL to the backend's `CORS_ORIGINS` and redeploy
    the backend.
 
@@ -474,17 +479,25 @@ with the provider template name left blank when allowed by the test setup.
 3. *Templates are written in the admin panel because the admin should not have
    to leave it.* The wording, the placeholders and the on/off switch for every
    trigger/channel pair are managed in one table, and the backend talks to
-   Meta/Postmark/OneSignal for you. Opening three provider dashboards to
+   Meta/Brevo/OneSignal for you. Opening three provider dashboards to
    change one line of copy is slow and easy to get out of sync.
 4. *Web Push is a browser notification.* The browser gives the site an
-   endpoint; the backend sends to that endpoint using VAPID keys. It needs
-   permission once per browser, and iOS only supports it for a Home Screen app.
+   subscription id; the backend sends through OneSignal. It needs permission
+   once per browser, and the browser subscription is stored against the user.
 
 ### Walkthrough video (required)
 Record with Loom, Google Drive or an unlisted YouTube video. Cover, in order:
-sign in as admin → open the notification table → create/edit a template → test
-send it → fire each trigger → show WhatsApp, the inbox and the browser
-pop-up → flip a toggle off and on. Narrate as you go.
+1. Open the Vercel frontend and Render `/api/health/` endpoint.
+2. Sign in as admin and open the one-table Notification Settings screen.
+3. Show Login and Logout templates for WhatsApp, Email and Web Push.
+4. Test-send Email and show the Brevo-delivered inbox message.
+5. Test-send Web Push and show the OneSignal browser notification.
+6. Sign in/out as the subscribed test user and show automatic delivery logs.
+7. Toggle Web Push off, trigger Login once, show it is skipped, then turn it back on.
+8. Run/show inactivity scan evidence and the Activity log.
+9. When Meta approves the two WhatsApp templates, press Sync, test-send each,
+   then repeat Login/Logout and show WhatsApp + Email + Web Push all attempted.
+10. Finish with GitHub, Render and Vercel URLs.
 
 ---
 
@@ -497,7 +510,7 @@ pop-up → flip a toggle off and on. Narrate as you go.
 | `403` on admin pages | the account is not staff — `manage.py create_demo_users --admin` |
 | WhatsApp send fails | token expired, or the recipient is not an approved test recipient |
 | Email send fails | sender not verified, or the free tier is exhausted |
-| No browser notification | no `VAPID_PUBLIC_KEY` and no OneSignal keys; also check the permission was granted, and use Chrome/Edge |
+| No browser notification | check `ONESIGNAL_APP_ID` + `ONESIGNAL_REST_API_KEY`, OneSignal Site URL, the service worker, and browser permission |
 | Everything says `simulated` | `NOTIFICATION_SANDBOX` is still `True` — that is the default |
 | Channel always `skipped` | read the `error` on the Activity page; usually a missing phone number or no subscription |
 | `No module named 'fcntl'` | `gunicorn` is Linux-only. Use `manage.py runserver` locally; gunicorn only runs on Render. |

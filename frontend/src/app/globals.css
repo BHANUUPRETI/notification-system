@@ -335,6 +335,7 @@ table.grid-table td.trigger-cell { min-width: 230px; }
   white-space: pre-wrap; word-break: break-word; line-height: 1.55;
 }
 .preview-box .ph { background: var(--brand-soft); color: var(--brand); border-radius: 4px; padding: 0 3px; font-family: var(--mono); font-size: 13px; }
+.preview-heading { margin-bottom: 6px; }
 
 .empty { text-align: center; padding: 40px 20px; color: var(--text-faint); }
 .empty .big { font-size: 30px; margin-bottom: 8px; }
